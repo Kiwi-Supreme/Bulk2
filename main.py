@@ -12,23 +12,15 @@ load_dotenv()
 app = FastAPI()
 
 
-
 producer = KafkaProducer(
     bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
     value_serializer=lambda v: json.dumps(v).encode("utf-8")
 )
-'''
-producer = KafkaProducer(
-    bootstrap_servers="localhost:9092",  
-    value_serializer=lambda v: json.dumps(v).encode("utf-8")
-)
-'''
 
 
 def load_email_list():
     df = pd.read_excel("email_list.xlsx")
     return df.to_dict(orient="records")
-
 
 
 async def send_email_message(person):
