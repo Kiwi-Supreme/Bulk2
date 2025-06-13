@@ -32,7 +32,7 @@ async def startup_event():
             print(f"Kafka not ready yet, retrying in 5 seconds... ({i+1}/10)")
             await asyncio.sleep(5)
     else:
-        print("❌ Kafka is not available after multiple retries.")
+        print("Kafka is not available after multiple retries.")
         raise Exception("Kafka not available")
 
 
