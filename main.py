@@ -5,17 +5,40 @@ import json
 import os
 import asyncio
 from kafka import KafkaProducer
+from kafka.errors import NoBrokersAvailable
 from dotenv import load_dotenv
 
 load_dotenv()
 
 app = FastAPI()
 
+producer = None  # Will be initialized later
 
-producer = KafkaProducer(
-    bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
-    value_serializer=lambda v: json.dumps(v).encode("utf-8")
-)
+
+@app.on_event("startup")
+async def startup_event():
+    global producer
+    # Retry loop to wait for Kafka
+    for i in range(10):
+        try:
+            print(f"Kafka bootstrap servers: {os.getenv('KAFKA_BOOTSTRAP_SERVERS')}")
+            producer = KafkaProducer(
+                bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+                value_serializer=lambda v: json.dumps(v).encode("utf-8")
+            )
+            print("Kafka Producer initialized.")
+            break
+        except NoBrokersAvailable as e:
+            print(f"Kafka not ready yet, retrying in 5 seconds... ({i+1}/10)")
+            await asyncio.sleep(5)
+    else:
+        print("❌ Kafka is not available after multiple retries.")
+        raise Exception("Kafka not available")
+
+
+@app.get("/")
+def read_root():
+    return {"status": "FastAPI is running"}
 
 
 def load_email_list():
@@ -47,10 +70,11 @@ HR Team
         "Offer_amount": person["Offer_amount"],
         "Starting_date": person["Starting_date"],
         "Location": person["Location"],
-        "has_passed": person.get("has_passed", "no") ,
+        "has_passed": person.get("has_passed", "no"),
         "message": personalized_message
     }
-    print("inside send email messsage")
+
+    print(f"Queuing message for: {person['Email']}")
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, lambda: producer.send("offer_topic", value=payload))
 
@@ -59,11 +83,9 @@ HR Team
 async def send_bulk_emails():
     email_list = load_email_list()
 
-    # Create tasks for all emails
     tasks = [send_email_message(person) for person in email_list]
     await asyncio.gather(*tasks)
 
-    # Flush Kafka producer after sending all
     producer.flush()
 
     return JSONResponse({"status": "Emails queued successfully"})
